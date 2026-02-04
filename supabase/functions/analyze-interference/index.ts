@@ -6,16 +6,27 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// ... (начало кода такое же)
+
 serve(async (req) => {
-  // 1. Обработка CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders, status: 200 });
   }
 
   try {
-    // Извлекаем данные, которые присылает фронтенд лаборатории
-    const { l1, l2, taskCategory, contentArea } = await req.json();
+    const body = await req.json();
+    
+    // Пытаемся достать текст из всех возможных полей, которые может прислать фронтенд
+    const text = body.text || body.content || body.textPassage || body.contentArea;
+    
+    if (!text) {
+      console.error("Received body:", JSON.stringify(body)); // Увидим в логах, что пришло
+      throw new Error("No text provided in any known field (text, content, textPassage, contentArea)");
+    }
 
+    const safeText = text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
+
+    // ... (дальше запрос к Gemini без изменений)
     // Функция очистки ввода
     const sanitize = (val: string) => (val || '').replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 2000);
     
