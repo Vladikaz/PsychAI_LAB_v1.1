@@ -6,6 +6,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  // Обработка CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -13,7 +14,6 @@ serve(async (req) => {
   try {
     const { textPassage } = await req.json();
 
-    // Validate inputs
     if (!textPassage || !textPassage.trim()) {
       return new Response(
         JSON.stringify({ error: "Missing required field: textPassage" }),
@@ -21,126 +21,75 @@ serve(async (req) => {
       );
     }
 
-    // Sanitize inputs
+    // Очистка ввода
     const sanitize = (text: string) => text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
     const safeText = sanitize(textPassage);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    // Используем твой GEMINI_API_KEY, который ты прописал в секретах Supabase
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
     }
 
-    const systemPrompt = `You are a Cognitive Load Expert and Reading Complexity Analyst. Your task is to analyze text for cognitive difficulty and mental effort required.
+    const systemPrompt = `You are a Cognitive Load Expert and Reading Complexity Analyst. 
+Task: Analyze text for cognitive difficulty and mental effort.
 
-CRITICAL: You MUST respond with ONLY valid JSON. No markdown, no explanations, no text before or after the JSON.
+STRICT RULES:
+1. Output MUST be ONLY valid JSON.
+2. Proportionality: If the input is a single sentence, provide a concise analysis. If the input is a long passage, provide detailed mapping.
+3. No Fan-Fiction: Do not assume student background or external conditions. Focus only on the linguistic and cognitive properties of the provided text.
+4. Heatmap: Create segments that cover the entire input text accurately.
 
-The JSON structure must be exactly:
+JSON Structure:
 {
-  "loadPoints": [
-    {
-      "position": number (word position in text, starting at 1),
-      "word": "string - the challenging word",
-      "load": number (0-100, cognitive difficulty score),
-      "reason": "string - why this word/phrase is challenging"
-    }
-  ],
-  "overallScore": number (0-100, overall text complexity),
-  "heatmapSegments": [
-    {
-      "text": "string - segment of text (phrase or sentence)",
-      "load": number (0-100),
-      "startIndex": number (character start position),
-      "endIndex": number (character end position)
-    }
-  ],
-  "scaffoldingAdvice": [
-    {
-      "position": "string - where in the text (e.g., 'Opening sentence', 'Paragraph 2')",
-      "advice": "string - specific teaching recommendation",
-      "priority": "high" | "medium" | "low"
-    }
-  ],
-  "graphData": [
-    {
-      "position": number (sequential position for graphing),
-      "mentalEffort": number (0-100),
-      "label": "string - short label for this data point"
-    }
-  ]
-}
+  "loadPoints": [{ "position": number, "word": "string", "load": 0-100, "reason": "string" }],
+  "overallScore": number (0-100),
+  "heatmapSegments": [{ "text": "string", "load": 0-100, "startIndex": number, "endIndex": number }],
+  "scaffoldingAdvice": [{ "position": "string", "advice": "string", "priority": "high"|"medium"|"low" }],
+  "graphData": [{ "position": number, "mentalEffort": 0-100, "label": "string" }]
+}`;
 
-Analyze sentence complexity, vocabulary difficulty, syntactic density, and abstract concepts.
-Create heatmap segments that cover the entire input text.
-Provide actionable scaffolding advice for teachers.`;
-
-    const userPrompt = `Analyze the cognitive load of this text passage:
-
-"${safeText}"
-
-Identify complexity hotspots, calculate mental effort scores, segment the text for heatmap visualization, and provide scaffolding recommendations for teachers.`;
-
-    console.log(`Analyzing cognitive load for text: ${safeText.slice(0, 100)}...`);
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Используем официальный OpenAI-совместимый эндпоинт Google Gemini
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gemini-1.5-flash", // Оптимальная модель для быстрого анализа
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "user", content: `Analyze this text: "${safeText}"` }
         ],
-        temperature: 0.7,
+        response_format: { type: "json_object" }, // Принудительный JSON
+        temperature: 0.3, // Снижаем креативность для точности
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      const errorData = await response.json();
+      console.error("Gemini API Error:", errorData);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const aiResponse = await response.json();
     const content = aiResponse.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error("No content in AI response");
+      throw new Error("Empty response from AI");
     }
 
-    // Parse the JSON response
+    // Парсинг с очисткой (на случай, если модель все же добавит markdown-обертку)
     let analysis;
     try {
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith("```json")) {
-        cleanContent = cleanContent.slice(7);
-      } else if (cleanContent.startsWith("```")) {
-        cleanContent = cleanContent.slice(3);
-      }
-      if (cleanContent.endsWith("```")) {
-        cleanContent = cleanContent.slice(0, -3);
-      }
-      analysis = JSON.parse(cleanContent.trim());
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", content);
-      throw new Error("Failed to parse AI response as JSON");
+      const cleanContent = content.replace(/```json|```/g, "").trim();
+      analysis = JSON.parse(cleanContent);
+    } catch (e) {
+      console.error("JSON Parse Error. Raw content:", content);
+      throw new Error("Failed to parse AI response");
     }
 
-    // Ensure all required fields exist with defaults
     const result = {
       loadPoints: analysis.loadPoints || [],
       overallScore: analysis.overallScore ?? 50,
@@ -148,8 +97,6 @@ Identify complexity hotspots, calculate mental effort scores, segment the text f
       scaffoldingAdvice: analysis.scaffoldingAdvice || [],
       graphData: analysis.graphData || [],
     };
-
-    console.log("Cognitive load analysis complete:", JSON.stringify(result).slice(0, 200));
 
     return new Response(
       JSON.stringify(result),
@@ -159,7 +106,7 @@ Identify complexity hotspots, calculate mental effort scores, segment the text f
   } catch (error) {
     console.error("Error in analyze-cognitive-load:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error occurred" }),
+      JSON.stringify({ error: error instanceof Error ? error.message : "Internal Error" }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
