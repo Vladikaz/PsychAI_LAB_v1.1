@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // 1. Обработка CORS preflight (чтобы браузер не блокировал запрос)
+  // 1. Обработка CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders, status: 200 });
   }
@@ -15,15 +15,14 @@ serve(async (req) => {
   try {
     const body = await req.json();
     
-    // Пытаемся достать текст из всех возможных полей
+    // Твоя система поиска текста в теле запроса
     const rawText = body.text || body.content || body.textPassage || body.contentArea || body.words;
     
     if (!rawText) {
-      console.error("Received body keys:", Object.keys(body)); // Поможет отладить, если ключи другие
-      throw new Error("No text provided in any known field (text, content, textPassage, contentArea, words)");
+      console.error("Received body keys:", Object.keys(body));
+      throw new Error("No text provided in any known field");
     }
 
-    // Очистка и ограничение длины
     const safeText = rawText.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
@@ -31,53 +30,52 @@ serve(async (req) => {
       throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
     }
 
+    // НАТИВНЫЙ эндпоинт Google Gemini
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
     const systemPrompt = `You are a Cognitive Load Expert and Reading Complexity Analyst. 
-Task: Analyze text for cognitive difficulty and mental effort.
-STRICT RULES:
-1. Output MUST be ONLY valid JSON.
-2. Heatmap: Create segments that cover the entire input text accurately.
+    Task: Analyze text for cognitive difficulty. Return ONLY valid JSON.
+    Structure: {
+      "loadPoints": [{ "position": number, "word": "string", "load": 0-100, "reason": "string" }],
+      "overallScore": number,
+      "heatmapSegments": [{ "text": "string", "load": 0-100, "startIndex": number, "endIndex": number }],
+      "scaffoldingAdvice": [{ "position": "string", "advice": "string", "priority": "high"|"medium"|"low" }],
+      "graphData": [{ "position": number, "mentalEffort": 0-100, "label": "string" }]
+    }`;
 
-JSON Structure:
-{
-  "loadPoints": [{ "position": number, "word": "string", "load": 0-100, "reason": "string" }],
-  "overallScore": number,
-  "heatmapSegments": [{ "text": "string", "load": 0-100, "startIndex": number, "endIndex": number }],
-  "scaffoldingAdvice": [{ "position": "string", "advice": "string", "priority": "high"|"medium"|"low" }],
-  "graphData": [{ "position": number, "mentalEffort": 0-100, "label": "string" }]
-}`;
-
-    // Запрос к Gemini (через OpenAI-совместимый путь)
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    // Запрос в формате Google AI
+    const response = await fetch(API_URL, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gemini-1.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analyze this text: "${safeText}"` }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3,
+        contents: [{
+          parts: [{ text: `${systemPrompt}\n\nAnalyze this text: "${safeText}"` }]
+        }],
+        generationConfig: {
+          response_mime_type: "application/json",
+          temperature: 0.2
+        }
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Gemini Error:", errorData);
-      throw new Error(`Gemini API error: ${response.status}`);
+    const data = await response.json();
+
+    // Обработка ошибок от Google
+    if (data.error) {
+      console.error("Google API Error Details:", data.error);
+      throw new Error(`Gemini Error: ${data.error.message}`);
     }
 
-    const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content;
+    // В нативном API ответ лежит в candidates[0].content.parts[0].text
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!content) {
+      console.error("Unexpected Data Structure:", JSON.stringify(data));
+      throw new Error("Empty response from AI");
+    }
 
-    if (!content) throw new Error("Empty response from AI");
-
-    // Парсинг результата (убираем возможные markdown-метки ```json)
-    const cleanContent = content.replace(/```json|```/g, "").trim();
-    const analysis = JSON.parse(cleanContent);
+    // Парсинг результата
+    const analysis = JSON.parse(content.replace(/```json|```/g, "").trim());
 
     return new Response(
       JSON.stringify(analysis),
