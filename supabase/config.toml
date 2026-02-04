@@ -1,0 +1,16 @@
+project_id = "zuhprhyhoywrmynzsvwq"
+
+[functions.analyze-student]
+verify_jwt = false
+
+[functions.synthesize-class]
+verify_jwt = false
+
+[functions.analyze-interference]
+verify_jwt = false
+
+[functions.analyze-etymology]
+verify_jwt = false
+
+[functions.analyze-cognitive-load]
+verify_jwt = false
