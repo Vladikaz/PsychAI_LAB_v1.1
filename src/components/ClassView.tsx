@@ -85,49 +85,54 @@ const ClassView = ({ classId, className, onStudentClick, onDelete }: ClassViewPr
     },
   });
 
-  const synthesizeClass = useMutation({
-    mutationFn: async () => {
-      const studentsWithPortraits = students?.filter(s => s.ai_full_portrait) || [];
-      
-      if (studentsWithPortraits.length === 0) {
-        throw new Error("No analyzed students found. Please analyze individual students first.");
-      }
+const synthesizeClass = useMutation({
+  mutationFn: async () => {
+    const studentsWithPortraits = students?.filter(s => s.ai_full_portrait) || [];
+    
+    if (studentsWithPortraits.length === 0) {
+      throw new Error("No analyzed students found. Please analyze individual students first.");
+    }
 
-      const response = await supabaseWithDevice.functions.invoke("synthesize-class", {
-        headers: {
-          "x-device-id": getDemoScopeId(),
-        },
-        body: {
-          class_name: className,
-          student_portraits: studentsWithPortraits.map(s => ({
-            student_id: s.student_numeric_id,
-            portrait: s.ai_full_portrait,
-            tag: s.ai_personality_tag || "Unknown",
-          })),
-        },
-      });
+    const response = await supabaseWithDevice.functions.invoke("synthesize-class", {
+      headers: {
+        "x-device-id": getDemoScopeId(),
+      },
+      body: {
+        class_name: className,
+        student_portraits: studentsWithPortraits.map(s => ({
+          student_id: s.student_numeric_id,
+          portrait: s.ai_full_portrait,
+          tag: s.ai_personality_tag || "Unknown",
+        })),
+      },
+    });
 
-      if (response.error) throw new Error(response.error.message);
-      if (response.data.error) throw new Error(response.data.error);
+    if (response.error) throw new Error(response.error.message);
+    
+    // ПРОВЕРКА ИМЕНИ ПОЛЯ:
+    // Берем global_strategy (из новой функции) или summary (старый вариант)
+    const strategyData = response.data.global_strategy || response.data.summary || response.data.content;
+    
+    if (!strategyData) throw new Error("AI returned empty strategy");
 
-      // Update class summary
-      const { error: updateError } = await supabaseWithDevice
-        .from("classes")
-        .update({ class_summary: response.data.summary })
-        .eq("id", classId);
+    // Обновляем базу данных правильным значением
+    const { error: updateError } = await supabaseWithDevice
+      .from("classes")
+      .update({ class_summary: strategyData }) 
+      .eq("id", classId);
 
-      if (updateError) throw updateError;
+    if (updateError) throw updateError;
 
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["class", classId] });
-      toast.success("Class strategy synthesized successfully");
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
+    return response.data;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ["class", classId] });
+    toast.success("Class strategy synthesized successfully");
+  },
+  onError: (error) => {
+    toast.error(error.message);
+  },
+});
 
   const deleteClass = useMutation({
     mutationFn: async () => {
