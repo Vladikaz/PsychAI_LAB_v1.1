@@ -13,7 +13,6 @@ serve(async (req) => {
   try {
     const { l1, l2, taskCategory, contentArea } = await req.json();
 
-    // Validate inputs
     if (!l1 || !l2 || !contentArea) {
       return new Response(
         JSON.stringify({ error: "Missing required fields: l1, l2, contentArea" }),
@@ -21,104 +20,56 @@ serve(async (req) => {
       );
     }
 
-    // Sanitize inputs to prevent prompt injection
     const sanitize = (text: string) => text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 2000);
     const safeL1 = sanitize(l1);
     const safeL2 = sanitize(l2);
     const safeCategory = sanitize(taskCategory || 'grammar');
     const safeContent = sanitize(contentArea);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
     }
 
-    const systemPrompt = `You are a Senior Applied Linguist and Language Transfer Expert. Your task is to analyze semantic interference patterns between a native language (L1) and a target language (L2).
+    const systemPrompt = `You are a Senior Applied Linguist and Language Transfer Expert. 
+Task: Analyze semantic interference and transfer patterns between L1 (Native) and L2 (Target).
 
-CRITICAL: You MUST respond with ONLY valid JSON. No markdown, no explanations, no text before or after the JSON.
+STRICT RULES:
+1. Output MUST be ONLY valid JSON.
+2. Bridges: Identify real "Positive Transfer" opportunities where L1 knowledge helps L2.
+3. Pitfalls: Detail "Negative Interference" points (errors caused by L1 logic).
+4. Decision Tree: Map the cognitive steps an L1 speaker takes that lead to a specific L2 outcome.
+5. Evidence-Based: Focus on established linguistic differences (syntax, morphology, phonology).
 
-The JSON structure must be exactly:
+JSON Structure:
 {
-  "bridges": [
-    {
-      "l1Concept": "string - the L1 pattern/concept",
-      "l2Concept": "string - the equivalent L2 pattern/concept", 
-      "type": "grammatical" | "lexical" | "phonetic",
-      "transferType": "positive" | "neutral",
-      "explanation": "string - why this is a positive transfer bridge"
-    }
-  ],
-  "pitfalls": [
-    {
-      "l1Pattern": "string - the L1 pattern that causes interference",
-      "l2Error": "string - the resulting error in L2",
-      "severity": "high" | "medium" | "low",
-      "explanation": "string - why this interference occurs",
-      "correction": "string - how to correct/avoid this error"
-    }
-  ],
-  "falseFriends": [
-    {
-      "l1Word": "string - word in L1",
-      "l2Word": "string - similar word in L2",
-      "l1Meaning": "string - what it means in L1",
-      "l2Meaning": "string - what it actually means in L2"
-    }
-  ],
-  "decisionTree": [
-    {
-      "step": 1,
-      "l1Logic": "string - how L1 speaker thinks",
-      "l2Result": "string - what they produce in L2",
-      "isError": true | false
-    }
-  ]
-}
+  "bridges": [{ "l1Concept": "string", "l2Concept": "string", "type": "grammatical"|"lexical"|"phonetic", "transferType": "positive"|"neutral", "explanation": "string" }],
+  "pitfalls": [{ "l1Pattern": "string", "l2Error": "string", "severity": "high"|"medium"|"low", "explanation": "string", "correction": "string" }],
+  "falseFriends": [{ "l1Word": "string", "l2Word": "string", "l1Meaning": "string", "l2Meaning": "string" }],
+  "decisionTree": [{ "step": number, "l1Logic": "string", "l2Result": "string", "isError": boolean }]
+}`;
 
-Provide 2-4 items for each array. Focus on the specific content area provided. Be accurate and educational.`;
-
-    const userPrompt = `Analyze the semantic interference between:
-- L1 (Native Language): ${safeL1}
-- L2 (Target Language): ${safeL2}
-- Task Category: ${safeCategory}
-- Content/Topic: ${safeContent}
-
-Identify bridges (positive transfer), pitfalls (negative interference), false friends (lexical traps), and create a decision tree showing how L1 logic leads to L2 output.`;
-
-    console.log(`Analyzing interference: ${safeL1} -> ${safeL2}, category: ${safeCategory}`);
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Authorization": `Bearer ${GEMINI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "user", content: `Analyze interference: L1:${safeL1}, L2:${safeL2}, Category:${safeCategory}, Topic:${safeContent}` }
         ],
-        temperature: 0.7,
+        response_format: { type: "json_object" },
+        temperature: 0.3,
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("Gemini API error:", errorText);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const aiResponse = await response.json();
@@ -128,37 +79,22 @@ Identify bridges (positive transfer), pitfalls (negative interference), false fr
       throw new Error("No content in AI response");
     }
 
-    // Parse the JSON response, handling potential markdown wrapping
     let analysis;
     try {
-      // Remove markdown code blocks if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith("```json")) {
-        cleanContent = cleanContent.slice(7);
-      } else if (cleanContent.startsWith("```")) {
-        cleanContent = cleanContent.slice(3);
-      }
-      if (cleanContent.endsWith("```")) {
-        cleanContent = cleanContent.slice(0, -3);
-      }
-      analysis = JSON.parse(cleanContent.trim());
+      const cleanContent = content.replace(/```json|```/g, "").trim();
+      analysis = JSON.parse(cleanContent);
     } catch (parseError) {
-      console.error("Failed to parse AI response:", content);
+      console.error("JSON Parse Error:", content);
       throw new Error("Failed to parse AI response as JSON");
     }
 
-    // Ensure all required fields exist with defaults
-    const result = {
-      bridges: analysis.bridges || [],
-      pitfalls: analysis.pitfalls || [],
-      falseFriends: analysis.falseFriends || [],
-      decisionTree: analysis.decisionTree || [],
-    };
-
-    console.log("Analysis complete:", JSON.stringify(result).slice(0, 200));
-
     return new Response(
-      JSON.stringify(result),
+      JSON.stringify({
+        bridges: analysis.bridges || [],
+        pitfalls: analysis.pitfalls || [],
+        falseFriends: analysis.falseFriends || [],
+        decisionTree: analysis.decisionTree || [],
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
