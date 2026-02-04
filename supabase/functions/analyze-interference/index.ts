@@ -6,9 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ... (начало кода такое же)
-
 serve(async (req) => {
+  // 1. Обработка CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders, status: 200 });
   }
@@ -16,24 +15,25 @@ serve(async (req) => {
   try {
     const body = await req.json();
     
-    // Пытаемся достать текст из всех возможных полей, которые может прислать фронтенд
-    const text = body.text || body.content || body.textPassage || body.contentArea;
-    
-    if (!text) {
-      console.error("Received body:", JSON.stringify(body)); // Увидим в логах, что пришло
-      throw new Error("No text provided in any known field (text, content, textPassage, contentArea)");
+    // Извлекаем специфичные поля или общие (на всякий случай)
+    const l1 = body.l1 || 'Russian';
+    const l2 = body.l2 || 'English';
+    const taskCategory = body.taskCategory || body.category || 'grammar';
+    // Основной контент может прийти в разных полях в зависимости от формы
+    const contentArea = body.contentArea || body.text || body.content || body.textPassage || "";
+
+    if (!contentArea && !body.contentArea) {
+      console.error("Received body keys:", Object.keys(body));
+      throw new Error("No content provided for analysis");
     }
 
-    const safeText = text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
-
-    // ... (дальше запрос к Gemini без изменений)
     // Функция очистки ввода
-    const sanitize = (val: string) => (val || '').replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 2000);
+    const sanitize = (val: string) => (val || '').replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 3000);
     
-    const safeL1 = sanitize(l1 || 'Russian');
-    const safeL2 = sanitize(l2 || 'English');
-    const safeCategory = sanitize(taskCategory || 'grammar');
-    const safeContent = sanitize(contentArea || '');
+    const safeL1 = sanitize(l1);
+    const safeL2 = sanitize(l2);
+    const safeCategory = sanitize(taskCategory);
+    const safeContent = sanitize(contentArea);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
@@ -57,7 +57,7 @@ JSON Structure:
   "decisionTree": [{ "step": number, "l1Logic": "string", "l2Result": "string", "isError": boolean }]
 }`;
 
-    // Запрос к Gemini
+    // Запрос к Gemini (через OpenAI-совместимый путь)
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
@@ -77,6 +77,7 @@ JSON Structure:
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error("Gemini Error:", errorData);
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
