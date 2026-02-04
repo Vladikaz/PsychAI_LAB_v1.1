@@ -1,92 +1,81 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-device-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id",
 };
 
 serve(async (req) => {
-  // 1. Обработка CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders, status: 200 });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const body = await req.json();
-    
-    // Твоя система поиска текста в теле запроса
+    // Адаптивный поиск текста (как мы делали раньше)
     const rawText = body.text || body.content || body.textPassage || body.contentArea || body.words;
     
-    if (!rawText) {
-      console.error("Received body keys:", Object.keys(body));
-      throw new Error("No text provided in any known field");
-    }
-
-    const safeText = rawText.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
+    if (!rawText) throw new Error("No text provided");
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
+
+    const systemPrompt = `You are an expert in Cognitive Load Theory. 
+Analyze text for ESL students and return ONLY valid JSON with this structure:
+{
+  "loadPoints": [{ "position": number, "word": "string", "load": 0-100, "reason": "string" }],
+  "overallScore": number,
+  "heatmapSegments": [{ "text": "string", "load": 0-100, "startIndex": number, "endIndex": number }],
+  "scaffoldingAdvice": [{ "position": "string", "advice": "string", "priority": "high" }],
+  "graphData": [{ "position": number, "mentalEffort": 0-100, "label": "string" }]
+}`;
+
+    // Используем твой проверенный URL
+    const url = `https://generativelanguage.googleapis.com/v1alpha/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
+
+    let response;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    // Тот самый цикл автоповтора
+    while (attempts < maxAttempts) {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${systemPrompt}\n\nAnalyze this text: ${rawText}\n\nReturn JSON.` }] }]
+        }),
+      });
+
+      if (response.status === 503) {
+        attempts++;
+        console.log(`Attempt ${attempts} for Cognitive Load failed with 503. Retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } else {
+        break;
+      }
     }
 
-    // НАТИВНЫЙ эндпоинт Google Gemini
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-    const systemPrompt = `You are a Cognitive Load Expert and Reading Complexity Analyst. 
-    Task: Analyze text for cognitive difficulty. Return ONLY valid JSON.
-    Structure: {
-      "loadPoints": [{ "position": number, "word": "string", "load": 0-100, "reason": "string" }],
-      "overallScore": number,
-      "heatmapSegments": [{ "text": "string", "load": 0-100, "startIndex": number, "endIndex": number }],
-      "scaffoldingAdvice": [{ "position": "string", "advice": "string", "priority": "high"|"medium"|"low" }],
-      "graphData": [{ "position": number, "mentalEffort": 0-100, "label": "string" }]
-    }`;
-
-    // Запрос в формате Google AI
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: `${systemPrompt}\n\nAnalyze this text: "${safeText}"` }]
-        }],
-        generationConfig: {
-          response_mime_type: "application/json",
-          temperature: 0.2
-        }
-      }),
-    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error ${response.status}: ${errorText}`);
+    }
 
     const data = await response.json();
-
-    // Обработка ошибок от Google
-    if (data.error) {
-      console.error("Google API Error Details:", data.error);
-      throw new Error(`Gemini Error: ${data.error.message}`);
-    }
-
-    // В нативном API ответ лежит в candidates[0].content.parts[0].text
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    if (!content) {
-      console.error("Unexpected Data Structure:", JSON.stringify(data));
-      throw new Error("Empty response from AI");
-    }
+    if (!content) throw new Error("Empty response from Gemini");
 
-    // Парсинг результата
-    const analysis = JSON.parse(content.replace(/```json|```/g, "").trim());
+    // Твоя надежная очистка JSON
+    const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    const analysis = JSON.parse(cleanJson);
 
-    return new Response(
-      JSON.stringify(analysis),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    );
+    return new Response(JSON.stringify(analysis), { 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
 
   } catch (error) {
-    console.error("Edge Function Error:", error.message);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error("Cognitive Load Function Error:", error.message);
+    return new Response(JSON.stringify({ error: error.message }), { 
+      status: 500, 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
   }
 });
