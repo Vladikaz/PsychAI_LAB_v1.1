@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # <--- ЭТА СТРОЧКА добавит кнопку ручного запуска
+
+# ... остальной код без изменений
     paths:
       - 'supabase/functions/**'
 
