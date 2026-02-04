@@ -1,108 +1,93 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-device-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-device-id",
 };
 
 serve(async (req) => {
-  // 1. Обработка CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders, status: 200 });
-  }
+  // Обработка CORS preflight
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const body = await req.json();
     
-    // Ищем текст во всех возможных полях, которые может прислать фронтенд
+    // Твоя "всеядная" логика поиска текста
     const rawText = body.text || body.content || body.textPassage || body.contentArea || body.words;
     
-    if (!rawText) {
-      console.error("Received body keys:", Object.keys(body));
-      throw new Error("No text provided in any known field (text, content, textPassage, contentArea, words)");
-    }
-
-    // Очистка от инъекций и ограничение длины
-    const safeText = rawText.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 3000);
+    if (!rawText) throw new Error("No text provided for etymological analysis");
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
-    }
+    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
 
     const systemPrompt = `You are an Expert Etymologist and Historical Linguist. 
-Task: Trace word origins and identify cognates across languages to aid language acquisition.
-
+Task: Trace word origins and identify cognates across languages.
 STRICT RULES:
 1. Response MUST be ONLY valid JSON.
-2. Evidence-Based: Trace only to verifiable linguistic roots (Latin, Greek, Proto-Indo-European, etc.).
-3. Cognates: Include 3-5 major languages (e.g., German, French, Spanish, Russian, Italian).
+2. Evidence-Based: Trace only to verifiable linguistic roots.
+3. Cognates: Include 3-5 major languages (German, French, Spanish, Russian, Italian).
 
 JSON Structure:
 {
-  "connections": [
-    {
-      "id": "string",
-      "word": "string",
-      "root": "string",
-      "rootLanguage": "string",
-      "cognates": [{ "language": "string", "word": "string" }],
-      "meaning": "string"
-    }
-  ],
-  "rootGroups": [
-    {
-      "root": "string",
-      "meaning": "string",
-      "words": ["string"]
-    }
-  ]
+  "connections": [{ "id": "string", "word": "string", "root": "string", "rootLanguage": "string", "cognates": [{"language": "string", "word": "string"}], "meaning": "string" }],
+  "rootGroups": [{ "root": "string", "meaning": "string", "words": ["string"] }]
 }`;
 
-    // Запрос к Gemini (через OpenAI-совместимый эндпоинт)
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gemini-1.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Analyze etymology and cognates for: "${safeText}"` }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-      }),
-    });
+    // Тот самый "золотой" URL из рабочего кода
+    const url = `https://generativelanguage.googleapis.com/v1alpha/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Gemini Error:", errorData);
-      throw new Error(`Gemini API error: ${response.status}`);
+    let response;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    // Цикл автоповтора при ошибке 503 (Service Unavailable)
+    while (attempts < maxAttempts) {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ 
+            parts: [{ text: `${systemPrompt}\n\nAnalyze etymology and cognates for: "${rawText}"\n\nReturn JSON.` }] 
+          }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            temperature: 0.2
+          }
+        }),
+      });
+
+      if (response.status === 503) {
+        attempts++;
+        console.log(`Etymology Attempt ${attempts} failed with 503. Retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1500)); // Ждем 1.5 сек
+      } else {
+        break;
+      }
     }
 
-    const aiResponse = await response.json();
-    const content = aiResponse.choices?.[0]?.message?.content;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error ${response.status}: ${errorText}`);
+    }
 
-    if (!content) throw new Error("No content in AI response");
+    const data = await response.json();
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!content) throw new Error("Empty response from Gemini");
 
-    // Парсинг и очистка JSON от возможных markdown-тегов
-    const cleanContent = content.replace(/```json|```/g, "").trim();
-    const analysis = JSON.parse(cleanContent);
+    // Твоя надежная очистка JSON от Markdown-разметки
+    const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    const analysis = JSON.parse(cleanJson);
 
-    return new Response(
-      JSON.stringify(analysis),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
-    );
+    return new Response(JSON.stringify(analysis), { 
+      headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    });
 
   } catch (error) {
-    console.error("Error in analyze-etymology:", error.message);
+    console.error("Etymology Function Error:", error.message);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: error.message }), 
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
