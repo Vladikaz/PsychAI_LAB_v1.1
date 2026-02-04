@@ -6,9 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ... (начало кода такое же)
-
 serve(async (req) => {
+  // 1. Обработка CORS preflight (чтобы браузер не блокировал запрос)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders, status: 200 });
   }
@@ -16,21 +15,16 @@ serve(async (req) => {
   try {
     const body = await req.json();
     
-    // Пытаемся достать текст из всех возможных полей, которые может прислать фронтенд
-    const text = body.text || body.content || body.textPassage || body.contentArea;
+    // Пытаемся достать текст из всех возможных полей
+    const rawText = body.text || body.content || body.textPassage || body.contentArea || body.words;
     
-    if (!text) {
-      console.error("Received body:", JSON.stringify(body)); // Увидим в логах, что пришло
-      throw new Error("No text provided in any known field (text, content, textPassage, contentArea)");
+    if (!rawText) {
+      console.error("Received body keys:", Object.keys(body)); // Поможет отладить, если ключи другие
+      throw new Error("No text provided in any known field (text, content, textPassage, contentArea, words)");
     }
 
-    const safeText = text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
-
-    // ... (дальше запрос к Gemini без изменений)
-    
-    // Очистка и проверка ввода
-    if (!text) throw new Error("No text provided");
-    const safeText = text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
+    // Очистка и ограничение длины
+    const safeText = rawText.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
@@ -41,8 +35,7 @@ serve(async (req) => {
 Task: Analyze text for cognitive difficulty and mental effort.
 STRICT RULES:
 1. Output MUST be ONLY valid JSON.
-2. Proportionality: If input is short, be concise. If long, provide detailed mapping.
-3. Heatmap: Create segments that cover the entire input text accurately.
+2. Heatmap: Create segments that cover the entire input text accurately.
 
 JSON Structure:
 {
@@ -53,7 +46,7 @@ JSON Structure:
   "graphData": [{ "position": number, "mentalEffort": 0-100, "label": "string" }]
 }`;
 
-    // Запрос к Gemini через OpenAI-совместимый путь
+    // Запрос к Gemini (через OpenAI-совместимый путь)
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
@@ -73,6 +66,7 @@ JSON Structure:
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error("Gemini Error:", errorData);
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
@@ -91,7 +85,7 @@ JSON Structure:
     );
 
   } catch (error) {
-    console.error("Error:", error.message);
+    console.error("Edge Function Error:", error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
