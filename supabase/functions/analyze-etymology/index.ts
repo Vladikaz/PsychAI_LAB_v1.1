@@ -6,9 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-// ... (начало кода такое же)
-
 serve(async (req) => {
+  // 1. Обработка CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders, status: 200 });
   }
@@ -16,17 +15,16 @@ serve(async (req) => {
   try {
     const body = await req.json();
     
-    // Пытаемся достать текст из всех возможных полей, которые может прислать фронтенд
-    const text = body.text || body.content || body.textPassage || body.contentArea;
+    // Ищем текст во всех возможных полях, которые может прислать фронтенд
+    const rawText = body.text || body.content || body.textPassage || body.contentArea || body.words;
     
-    if (!text) {
-      console.error("Received body:", JSON.stringify(body)); // Увидим в логах, что пришло
-      throw new Error("No text provided in any known field (text, content, textPassage, contentArea)");
+    if (!rawText) {
+      console.error("Received body keys:", Object.keys(body));
+      throw new Error("No text provided in any known field (text, content, textPassage, contentArea, words)");
     }
 
-    const safeText = text.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 5000);
-
-    // ... (дальше запрос к Gemini без изменений)
+    // Очистка от инъекций и ограничение длины
+    const safeText = rawText.replace(/IGNORE ALL PREVIOUS INSTRUCTIONS/gi, '').slice(0, 3000);
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) {
@@ -62,7 +60,7 @@ JSON Structure:
   ]
 }`;
 
-    // Запрос к Gemini
+    // Запрос к Gemini (через OpenAI-совместимый эндпоинт)
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
@@ -82,6 +80,7 @@ JSON Structure:
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error("Gemini Error:", errorData);
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
@@ -90,7 +89,7 @@ JSON Structure:
 
     if (!content) throw new Error("No content in AI response");
 
-    // Парсинг и очистка JSON
+    // Парсинг и очистка JSON от возможных markdown-тегов
     const cleanContent = content.replace(/```json|```/g, "").trim();
     const analysis = JSON.parse(cleanContent);
 
