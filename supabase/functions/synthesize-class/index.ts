@@ -43,7 +43,7 @@ You MUST respond with a JSON object containing exactly these fields:
 - summary: A BEAUTIFULLY FORMATTED MARKDOWN STRING combining all findings. This is the main text for the teacher.`;
 
     // Используем проверенный v1alpha URL
-    const url = `https://generativelanguage.googleapis.com/v1alpha/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     let response;
     let attempts = 0;
