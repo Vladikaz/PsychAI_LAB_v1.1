@@ -1,4 +1,4 @@
-project_id = "zuhprhyhoywrmynzsvwq"
+project_id = "onyrdbjlkfwapbgbntgh"
 
 [functions.analyze-student]
 verify_jwt = false
