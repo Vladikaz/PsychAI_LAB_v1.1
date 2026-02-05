@@ -85,65 +85,84 @@ const ClassView = ({ classId, className, onStudentClick, onDelete }: ClassViewPr
     },
   });
 
-const synthesizeClass = useMutation({
-  mutationFn: async () => {
-    const studentsWithPortraits = students?.filter(s => s.ai_full_portrait) || [];
-    
-    if (studentsWithPortraits.length === 0) {
-      throw new Error("No analyzed students found. Please analyze individual students first.");
-    }
+  const synthesizeClass = useMutation({
+    mutationFn: async () => {
+      const studentsWithPortraits = students?.filter(s => s.ai_full_portrait) || [];
+      
+      if (studentsWithPortraits.length === 0) {
+        throw new Error("No analyzed students found. Please analyze individual students first.");
+      }
 
-    const response = await supabaseWithDevice.functions.invoke("synthesize-class", {
-      headers: {
-        "x-device-id": getDemoScopeId(),
-      },
-      body: {
-        class_name: className,
-        student_portraits: studentsWithPortraits.map(s => ({
-          student_id: s.student_numeric_id,
-          portrait: s.ai_full_portrait,
-          tag: s.ai_personality_tag || "Unknown",
-        })),
-      },
-    });
+      console.log("Starting synthesis for students:", studentsWithPortraits.length);
 
-    if (response.error) throw new Error(response.error.message);
-    
-    // ПРОВЕРКА ИМЕНИ ПОЛЯ:
-    // Берем global_strategy (из новой функции) или summary (старый вариант)
-    const strategyData = response.data.global_strategy || response.data.summary || response.data.content;
-    
-    if (!strategyData) throw new Error("AI returned empty strategy");
+      const response = await supabaseWithDevice.functions.invoke("synthesize-class", {
+        headers: {
+          "x-device-id": getDemoScopeId(),
+        },
+        body: {
+          class_name: className,
+          student_portraits: studentsWithPortraits.map(s => ({
+            student_id: s.student_numeric_id,
+            portrait: s.ai_full_portrait,
+            tag: s.ai_personality_tag || "Unknown",
+          })),
+        },
+      });
 
-    // Обновляем базу данных правильным значением
-    const { error: updateError } = await supabaseWithDevice
-      .from("classes")
-      .update({ class_summary: strategyData }) 
-      .eq("id", classId);
+      // Логируем весь ответ для отладки
+      console.log("Edge Function Full Response:", response);
 
-    if (updateError) throw updateError;
+      if (response.error) {
+        console.error("Supabase Invoke Error:", response.error);
+        throw new Error(`Server Error: ${response.error.message || 'Check Supabase Logs'}`);
+      }
 
-    return response.data;
-  },
-  onSuccess: () => {
-    queryClient.invalidateQueries({ queryKey: ["class", classId] });
-    toast.success("Class strategy synthesized successfully");
-  },
-  onError: (error) => {
-    toast.error(error.message);
-  },
-});
+      const rawData = response.data;
+      
+      // Агрессивный поиск текста стратегии
+      let strategyData = "";
+      if (typeof rawData === 'string') {
+        strategyData = rawData;
+      } else if (rawData) {
+        strategyData = rawData.summary || rawData.global_strategy || rawData.content;
+        // Если ничего не нашли, но объект есть, превращаем его в строку (на крайний случай)
+        if (!strategyData) strategyData = JSON.stringify(rawData);
+      }
+      
+      if (!strategyData || strategyData === "{}" || strategyData === "null") {
+        console.error("Failed to extract strategy from:", rawData);
+        throw new Error("AI returned empty strategy or invalid format");
+      }
+
+      console.log("Strategy extracted successfully, updating database...");
+
+      const { error: updateError } = await supabaseWithDevice
+        .from("classes")
+        .update({ class_summary: strategyData }) 
+        .eq("id", classId);
+
+      if (updateError) throw updateError;
+
+      return rawData;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["class", classId] });
+      toast.success("Class strategy synthesized successfully");
+    },
+    onError: (error) => {
+      console.error("Mutation Error:", error);
+      toast.error(error.message);
+    },
+  });
 
   const deleteClass = useMutation({
     mutationFn: async () => {
-      // Delete all students first (cascade)
       const { error: studentsError } = await supabaseWithDevice
         .from("students")
         .delete()
         .eq("class_id", classId);
       if (studentsError) throw studentsError;
 
-      // Then delete the class
       const { error: classError } = await supabaseWithDevice
         .from("classes")
         .delete()
@@ -252,7 +271,7 @@ const synthesizeClass = useMutation({
         </div>
       )}
 
-      {/* Class Summary */}
+      {/* Class Summary Section */}
       {classData?.class_summary && (
         <div className="insight-section slide-in">
           <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
@@ -261,7 +280,7 @@ const synthesizeClass = useMutation({
               Class Strategy Summary
             </h3>
           </div>
-          <div className="max-w-none">
+          <div className="max-w-none prose prose-slate prose-sm dark:prose-invert">
             {renderMarkdown(classData.class_summary)}
           </div>
         </div>
@@ -323,7 +342,7 @@ const synthesizeClass = useMutation({
         </div>
       )}
 
-      {/* Delete Class */}
+      {/* Delete Class Dialog */}
       <div className="pt-8 border-t border-border">
         <AlertDialog>
           <AlertDialogTrigger asChild>
