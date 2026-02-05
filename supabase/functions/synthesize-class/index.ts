@@ -12,21 +12,22 @@ serve(async (req) => {
     const body = await req.json();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-    // АДАПТАЦИЯ: Ищем данные в поле student_portraits, которое прислал фронтенд
-    const portraits = body.student_portraits || body.observations || (Array.isArray(body) ? body : null);
+    // СИНХРОНИЗАЦИЯ: Берем именно те поля, которые шлет ClassView.tsx
+    const className = body.class_name || "General Class";
+    const portraits = body.student_portraits || [];
 
-    if (!portraits || !Array.isArray(portraits) || portraits.length === 0) {
-      console.error("Wrong format. Received:", JSON.stringify(body));
-      throw new Error("No student portraits provided or wrong format");
+    if (portraits.length === 0) {
+      throw new Error("No student portraits provided for synthesis");
     }
 
-    // Собираем портреты в один текст для анализа атмосферы класса
+    // Форматируем входные данные для ИИ
     const analysisInput = portraits
-      .map((p: any, i: number) => `Student ${i + 1} (${p.tag || 'No tag'}): ${p.portrait || JSON.stringify(p)}`)
+      .map((p: any) => `Student ID ${p.student_id} (${p.tag}): ${p.portrait}`)
       .join("\n\n---\n\n");
 
-    const systemPrompt = `You are an expert Educational Psychologist and Classroom Consultant. 
-Your task is to analyze these individual student portraits and synthesize them into a "Classroom Insight" report for the class: "${body.class_name || 'General Class'}".
+    const systemPrompt = `You are an expert Educational Psychologist. Your task is to analyze these individual student portraits and synthesize them into a "Classroom Insight" report for the class. 
+Analyze these student portraits for the class: "${className}".
+Synthesize a comprehensive "Classroom Insight" report.
 
 CRITICAL ANALYSIS RULES:
 1. Identify the collective emotional climate based on these portraits.
@@ -34,12 +35,14 @@ CRITICAL ANALYSIS RULES:
 3. Provide 4 concrete strategies for the teacher to manage this specific mix of personalities.
 4. Maintain academic rigor and pedagogical focus. If the input is minimal (e.g., student is sad), provide a concise, factual summary without psychological fan-fiction. Your output length should be proportional to the input detail, unless enough data is given. Do not assume underlying conditions, unless provided with enough data or having visible patterns.
 
-You MUST respond with a JSON object containing exactly these fields:
-- class_mood: A 2-3 word descriptor of the current class atmosphere.
-- key_patterns: A list of the most frequent behaviors or personality traits observed in this group.
-- group_dynamics: A detailed analysis of how these specific students (introverts, dominant types, etc.) likely interact as a whole (150-300 words).
-- recommendations: Exactly 4 actionable strategies for the teacher to improve the learning environment.`;
 
+You MUST respond with a JSON object containing exactly these fields:
+- class_mood: 2-3 words describing the atmosphere.
+- group_dynamics: A detailed psychological analysis (150-300 words).
+- recommendations: Exactly 4 actionable strategies.
+- summary: A BEAUTIFULLY FORMATTED MARKDOWN STRING combining all findings. This is the main text for the teacher.`;
+
+    // Используем проверенный v1alpha URL
     const url = `https://generativelanguage.googleapis.com/v1alpha/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
 
     let response;
@@ -53,9 +56,13 @@ You MUST respond with a JSON object containing exactly these fields:
         body: JSON.stringify({
           contents: [{ 
             parts: [{ 
-              text: `${systemPrompt}\n\nStudent Data for Synthesis:\n${analysisInput}\n\nReturn ONLY raw JSON.` 
+              text: `${systemPrompt}\n\nData for Synthesis:\n${analysisInput}\n\nReturn JSON. Ensure "summary" field contains the full formatted report in Markdown.` 
             }] 
-          }]
+          }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            temperature: 0.3
+          }
         }),
       });
 
@@ -74,10 +81,14 @@ You MUST respond with a JSON object containing exactly these fields:
 
     const data = await response.json();
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    const analysis = JSON.parse(cleanJson);
+    
+    if (!content) throw new Error("Empty response from Gemini");
 
-    return new Response(JSON.stringify(analysis), { 
+    // Очистка и отправка
+    const cleanJson = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    const result = JSON.parse(cleanJson);
+
+    return new Response(JSON.stringify(result), { 
       headers: { ...corsHeaders, "Content-Type": "application/json" } 
     });
 
