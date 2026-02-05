@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - 'supabase/functions/**'
-  workflow_dispatch: # Кнопка ручного запуска теперь на месте
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -18,13 +18,12 @@ jobs:
         with:
           version: latest
 
-- name: Deploy Functions
+      - name: Deploy Functions
         run: |
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} -p ${{ secrets.SUPABASE_DB_PASSWORD }}
           supabase functions deploy analyze-cognitive-load --no-verify-jwt
           supabase functions deploy analyze-etymology --no-verify-jwt
           supabase functions deploy analyze-interference --no-verify-jwt
-          # ДОБАВЛЯЕМ ЭТИ ДВЕ СТРОЧКИ:
           supabase functions deploy analyze-student --no-verify-jwt
           supabase functions deploy synthesize-class --no-verify-jwt
         env:
