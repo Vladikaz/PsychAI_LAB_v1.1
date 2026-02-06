@@ -1,5 +1,5 @@
 Psych-AI Lab: AI-Driven Pedagogical Suite
-An advanced analytical platform designed for ESL educators and pedagogical researchers. This project integrates psychological theory with modern AI to optimize language acquisition and classroom management.
+An advanced analytical platform designed for SL educators and pedagogical researchers. This project integrates psychological theory with modern AI to optimize language acquisition and classroom management.
 Tech Stack
 Frontend: React 18 with Vite, TypeScript, and Tailwind CSS.
 
