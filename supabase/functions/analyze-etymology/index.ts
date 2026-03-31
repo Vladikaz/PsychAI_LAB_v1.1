@@ -20,19 +20,27 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not configured in Supabase secrets");
 
-    const systemPrompt = `You are an Expert Etymologist and Historical Linguist. 
-Task: Trace word origins and identify cognates across languages.
+const systemPrompt = `You are an Expert Etymologist. 
+Task: Trace words to their earliest verifiable Proto-roots.
+
 STRICT RULES:
 1. Response MUST be ONLY valid JSON.
-2. Evidence-Based: Trace only to verifiable linguistic roots.
-3. Cognates: Include 3-6 major languages that share the same root and protoancestry. Do not show derivations that have a different ancestry.
+2. Root Language: Always use full descriptive names (e.g., "Proto-Indo-European", "Proto-Germanic", "Old Norse"). This is CRITICAL for UI coloring.
+3. Cognates: Include 4-6 cognates. Prioritize variety across different modern branches (e.g., if the root is PIE, show one Germanic, one Romance, one Slavic, etc.).
+4. Evidence: Only return linguistically accepted reconstructions (use the * asterisk for reconstructed forms).
 
 JSON Structure:
 {
-  "connections": [{ "id": "string", "word": "string", "root": "string", "rootLanguage": "string", "cognates": [{"language": "string", "word": "string"}], "meaning": "string" }],
+  "connections": [{ 
+    "id": "string", 
+    "word": "string", 
+    "root": "string", 
+    "rootLanguage": "string", 
+    "cognates": [{"language": "string", "word": "string"}], 
+    "meaning": "string" 
+  }],
   "rootGroups": [{ "root": "string", "meaning": "string", "words": ["string"] }]
 }`;
-
     // Тот самый "золотой" URL из рабочего кода
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
 
