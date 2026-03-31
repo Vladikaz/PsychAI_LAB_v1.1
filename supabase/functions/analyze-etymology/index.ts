@@ -25,7 +25,7 @@ Task: Trace word origins and identify cognates across languages.
 STRICT RULES:
 1. Response MUST be ONLY valid JSON.
 2. Evidence-Based: Trace only to verifiable linguistic roots.
-3. Cognates: Include 3-6 major languages, that share the same root and protoancestry.
+3. Cognates: Include 3-6 major languages that share the same root and protoancestry.
 
 JSON Structure:
 {
