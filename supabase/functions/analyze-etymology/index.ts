@@ -61,7 +61,7 @@ JSON Structure:
           }],
           generationConfig: {
             response_mime_type: "application/json",
-            temperature: 0.2
+            temperature: 0.0
           }
         }),
       });
