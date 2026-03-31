@@ -29,6 +29,7 @@ STRICT RULES:
 3. Cognates: Include 4-6 cognates. Prioritize variety across different modern branches (e.g., if the root is PIE, show one Germanic, one Romance, one Slavic, etc.).
 4. Evidence: Only return linguistically accepted reconstructions (use the * asterisk for reconstructed forms).
 5. Language Family Integrity: Before analyzing, identify the language family of the input word. Do not attempt to map Sino-Tibetan (Chinese), Afroasiatic (Arabic/Hebrew), or other non-Indo-European words to Proto-Indo-European roots. If the word is from a different family, trace it to its own respective ancestor (e.g., Old Chinese or Proto-Semitic).
+6. Refuse Hallucinations: If you cannot find 4 verifiable cognates, return only the ones that are 100% certain. Quality over quantity.
 
 JSON Structure:
 {
