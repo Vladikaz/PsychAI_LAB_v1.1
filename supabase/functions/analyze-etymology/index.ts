@@ -25,22 +25,15 @@ Task: Trace words to their earliest verifiable Proto-roots.
 
 STRICT RULES:
 1. Response MUST be ONLY valid JSON.
-2. Root Language: Always use full descriptive names (e.g., "Proto-Indo-European", "Proto-Germanic", "Old Norse"). This is CRITICAL for UI coloring.
-3. Cognates: Include 4-6 cognates. Prioritize variety across different modern branches (e.g., if the root is PIE, show one Germanic, one Romance, one Slavic, etc.).
-4. Evidence: Only return linguistically accepted reconstructions (use the * asterisk for reconstructed forms).
-5. Language Family Integrity: Before analyzing, identify the language family of the input word. Do not attempt to map Sino-Tibetan (Chinese), Afroasiatic (Arabic/Hebrew), or other non-Indo-European words to Proto-Indo-European roots. If the word is from a different family, trace it to its own respective ancestor (e.g., Old Chinese or Proto-Semitic).
-6. Refuse Hallucinations: If you cannot find 4 verifiable cognates, return only the ones that are 100% certain. Quality over quantity.
+2. Root Language: Always use full descriptive names (e.g., "Proto-Indo-European", "Proto-Germanic"). CRITICAL for UI coloring.
+3. Cognates: Include 4-6 cognates from different modern branches.
+4. Evidence: Use the * asterisk for reconstructed forms (e.g., *bher-).
+5. Language Family Integrity: Identify the language family first. Do not map Chinese (Sino-Tibetan) or Arabic (Afroasiatic) to Indo-European roots.
+6. Quality over Quantity: If you aren't 100% sure of a cognate, do not include it.
 
 JSON Structure:
 {
-  "connections": [{ 
-    "id": "string", 
-    "word": "string", 
-    "root": "string", 
-    "rootLanguage": "string", 
-    "cognates": [{"language": "string", "word": "string"}], 
-    "meaning": "string" 
-  }],
+  "connections": [{ "id": "string", "word": "string", "root": "string", "rootLanguage": "string", "cognates": [{"language": "string", "word": "string"}], "meaning": "string" }],
   "rootGroups": [{ "root": "string", "meaning": "string", "words": ["string"] }]
 }`;
     // Тот самый "золотой" URL из рабочего кода
