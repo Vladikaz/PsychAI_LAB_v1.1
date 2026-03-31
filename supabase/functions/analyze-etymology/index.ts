@@ -24,11 +24,8 @@ serve(async (req) => {
 Task: Trace word origins and identify cognates across languages.
 STRICT RULES:
 1. Response MUST be ONLY valid JSON.
-2. Root Language: Always use full descriptive names (e.g., "Proto-Indo-European", "Proto-Germanic").
-3. Cognates: Include 4-6 cognates from different modern branches.
-4. Evidence: Use the * asterisk for reconstructed forms (e.g., *bher-).
-5. Language Family Integrity: Identify the language family first. Do not map Chinese (Sino-Tibetan) or Arabic (Afroasiatic) to Indo-European roots.
-6. Quality over Quantity: If you aren't 100% sure of a cognate, do not include it.
+2. Evidence-Based: Trace only to verifiable linguistic roots.
+3. Cognates: Include 3-5 major languages (German, French, Spanish, Russian, Italian).
 
 JSON Structure:
 {
@@ -54,7 +51,7 @@ JSON Structure:
           }],
           generationConfig: {
             response_mime_type: "application/json",
-            temperature: 0.0
+            temperature: 0.2
           }
         }),
       });
