@@ -25,7 +25,7 @@ Task: Trace word origins and identify cognates across languages.
 STRICT RULES:
 1. Response MUST be ONLY valid JSON.
 2. Evidence-Based: Trace only to verifiable linguistic roots.
-3. Cognates: Include 2-5 major languages.
+3. Cognates: Include 3-5 major languages (German, French, Spanish, Russian, Italian).
 
 JSON Structure:
 {
@@ -51,7 +51,7 @@ JSON Structure:
           }],
           generationConfig: {
             response_mime_type: "application/json",
-            temperature: 0.0
+            temperature: 0.2
           }
         }),
       });
