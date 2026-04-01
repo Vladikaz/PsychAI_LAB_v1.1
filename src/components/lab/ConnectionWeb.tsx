@@ -1,152 +1,170 @@
+import React from "react";
 import { motion } from "framer-motion";
-import type { EtymologyAnalysis } from "@/lib/labStore";
-import { Network, Globe } from "lucide-react";
+import { 
+  Dna, 
+  GitBranch, 
+  Languages, 
+  AlertCircle, 
+  ArrowDown 
+} from "lucide-react";
 
-interface ConnectionWebProps {
-  connections: EtymologyAnalysis["connections"];
-  rootGroups: EtymologyAnalysis["rootGroups"];
+// Update the interface to match our new Cascading Ancestry prompt structure
+interface EtymologyTimelineProps {
+  ancient_seed?: {
+    form: string;
+    language: string;
+    meaning: string;
+    color_token: string;
+  };
+  intermediate_branches?: Array<{
+    form: string;
+    language: string;
+    century: string;
+    color_token: string;
+  }>;
+  modern_relatives?: Array<{
+    word: string;
+    lang: string;
+    connection: string;
+    color_token: string;
+  }>;
 }
 
-const ConnectionWeb = ({ connections, rootGroups }: ConnectionWebProps) => {
-  const languageColors: Record<string, string> = {
-    Russian: "bg-red-500/20 border-red-500/40 text-red-700 dark:text-red-300",
-    German: "bg-yellow-500/20 border-yellow-500/40 text-yellow-700 dark:text-yellow-300",
-    French: "bg-blue-500/20 border-blue-500/40 text-blue-700 dark:text-blue-300",
-    Spanish: "bg-orange-500/20 border-orange-500/40 text-orange-700 dark:text-orange-300",
-    Greek: "bg-purple-500/20 border-purple-500/40 text-purple-700 dark:text-purple-300",
-    Latin: "bg-emerald-500/20 border-emerald-500/40 text-emerald-700 dark:text-emerald-300",
-    Italian: "bg-green-500/20 border-green-500/40 text-green-700 dark:text-green-300",
-    Portuguese: "bg-teal-500/20 border-teal-500/40 text-teal-700 dark:text-teal-300",
-    Dutch: "bg-amber-500/20 border-amber-500/40 text-amber-700 dark:text-amber-300",
-  };
+const ConnectionWeb = ({ 
+  ancient_seed, 
+  intermediate_branches, 
+  modern_relatives 
+}: EtymologyTimelineProps) => {
 
-  const safeConnections = connections ?? [];
-  const safeRootGroups = rootGroups ?? [];
-
-  if (safeConnections.length === 0 && safeRootGroups.length === 0) {
+  // Return empty state if no data
+  if (!ancient_seed && !intermediate_branches && !modern_relatives) {
     return (
-      <div className="text-center py-8 text-muted-foreground">
-        <Network className="h-12 w-12 mx-auto mb-4 opacity-30" />
-        <p>No etymological connections found for the provided words.</p>
+      <div className="text-center py-12 bg-slate-50/50 rounded-xl border-2 border-dashed border-slate-200">
+        <Dna className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+        <p className="text-slate-500 font-medium">Ready to scan for ontological ancestry...</p>
       </div>
     );
   }
 
+  // Handle the "Substrate/Unknown" guardrail
+  const isUnknownOrigin = ancient_seed?.language.toLowerCase().includes("unknown") || 
+                          ancient_seed?.language.toLowerCase().includes("substrate");
+
   return (
-    <div className="space-y-8">
-      {/* Word Connections */}
-      {safeConnections.length > 0 && (
-        <div className="space-y-4">
-          <h4 className="font-semibold text-lg flex items-center gap-2">
-            <Network className="h-5 w-5 text-primary" />
-            Connection Web — Word Origins
-          </h4>
-
-          <div className="grid gap-6">
-            {safeConnections.map((connection, idx) => (
-              <motion.div
-                key={connection?.id ?? idx}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: idx * 0.1 }}
-                className="relative"
-              >
-                {/* Central Word */}
-                <div className="flex items-center justify-center mb-4">
-                  <div className="px-6 py-3 rounded-full bg-primary text-primary-foreground font-bold text-xl shadow-lg">
-                    {connection?.word ?? 'Unknown'}
-                  </div>
+    <div className="max-w-2xl mx-auto space-y-8 py-4">
+      
+      {/* 1. ANCIENT SEED - The Foundation */}
+      {ancient_seed && (
+        <section className="relative flex flex-col items-center">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="z-10 w-full max-w-sm"
+          >
+            <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border-b-4 border-slate-700 text-center relative overflow-hidden">
+              {/* Decorative DNA Background */}
+              <Dna className="absolute -right-4 -top-4 h-24 w-24 text-white/5 rotate-12" />
+              
+              <div className="flex items-center justify-center gap-2 mb-2 text-slate-400 uppercase tracking-widest text-[10px] font-bold">
+                <Dna className="h-3 w-3" />
+                Primary Ancient Seed
+              </div>
+              <h2 className="text-4xl font-serif font-bold mb-1 tracking-tight">
+                {ancient_seed.form}
+              </h2>
+              <p className="text-slate-400 text-sm font-medium mb-3 italic">
+                {ancient_seed.language}
+              </p>
+              <div className="bg-white/10 px-4 py-2 rounded-lg inline-block text-sm border border-white/5 backdrop-blur-sm">
+                "{ancient_seed.meaning}"
+              </div>
+              
+              {isUnknownOrigin && (
+                <div className="mt-4 flex items-center justify-center gap-2 text-amber-400 text-xs bg-amber-400/10 p-2 rounded-md">
+                  <AlertCircle className="h-3 w-3" />
+                  Non-standard or Substrate Origin
                 </div>
-
-                {/* Root Info */}
-                <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
-                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${languageColors[connection?.rootLanguage ?? ''] ?? 'bg-muted'}`}>
-                    {connection?.rootLanguage ?? 'Unknown'}
-                  </div>
-                  <span className="text-muted-foreground">•</span>
-                  <span className="font-mono text-sm">{connection?.root ?? 'N/A'}</span>
-                  <span className="text-muted-foreground">•</span>
-                  <span className="text-sm italic">"{connection?.meaning ?? 'N/A'}"</span>
-                </div>
-
-                {/* Cognates Fan */}
-                {Array.isArray(connection?.cognates) && connection.cognates.length > 0 && (
-                  <div className="flex flex-wrap justify-center gap-3">
-                    {connection.cognates.map((cognate, cIdx) => (
-                      <motion.div
-                        key={cIdx}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.1 + cIdx * 0.05 }}
-                        className={`relative px-4 py-2 rounded-lg border ${languageColors[cognate?.language ?? ''] ?? 'bg-muted border-muted'}`}
-                      >
-                        {/* Connection Line SVG */}
-                        <svg 
-                          className="absolute -top-4 left-1/2 -translate-x-1/2 w-px h-4"
-                          style={{ overflow: 'visible' }}
-                        >
-                          <line 
-                            x1="0" y1="16" x2="0" y2="0" 
-                            stroke="currentColor" 
-                            strokeWidth="2" 
-                            strokeDasharray="3 2"
-                            className="text-border"
-                          />
-                        </svg>
-                        
-                        <div className="text-xs text-muted-foreground mb-0.5">
-                          {cognate?.language ?? 'Unknown'}
-                        </div>
-                        <div className="font-medium">{cognate?.word ?? 'N/A'}</div>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </div>
-        </div>
+              )}
+            </div>
+          </motion.div>
+          
+          {/* Vertical Connecting Line */}
+          <div className="h-12 w-1 bg-gradient-to-b from-slate-900 to-slate-400" />
+        </section>
       )}
 
-      {/* Root Groups */}
-      {safeRootGroups.length > 0 && (
-        <div className="space-y-4">
-          <h4 className="font-semibold text-lg flex items-center gap-2">
-            <Globe className="h-5 w-5 text-secondary" />
-            Root Families
-          </h4>
+      {/* 2. INTERMEDIATE BRANCHES - The Migration */}
+      {intermediate_branches && intermediate_branches.length > 0 && (
+        <section className="relative space-y-6">
+          <div className="flex flex-col items-center">
+            <div className="flex items-center gap-2 text-slate-500 uppercase tracking-widest text-[10px] font-bold mb-4">
+              <GitBranch className="h-3 w-3" />
+              Proto-Migration Branches
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+              {intermediate_branches.map((branch, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, x: idx % 2 === 0 ? -20 : 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 + (idx * 0.1) }}
+                  className="bg-slate-700 text-slate-100 p-4 rounded-xl border-l-4 border-slate-500 shadow-md relative"
+                >
+                  <div className="text-[10px] font-bold text-slate-400 mb-1">{branch.language}</div>
+                  <div className="text-xl font-mono font-semibold">{branch.form}</div>
+                  <div className="absolute top-4 right-4 text-[9px] bg-black/20 px-2 py-0.5 rounded text-slate-400 font-mono">
+                    {branch.century}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+          
+          <div className="flex flex-col items-center pt-2">
+            <ArrowDown className="h-6 w-6 text-slate-300 animate-bounce" />
+          </div>
+        </section>
+      )}
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {safeRootGroups.map((group, idx) => (
+      {/* 3. MODERN RELATIVES - The Living Word */}
+      {modern_relatives && modern_relatives.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-center gap-2 text-teal-600 uppercase tracking-widest text-[10px] font-bold mb-4">
+            <Languages className="h-3 w-3" />
+            Modern Living Cognates
+          </div>
+          
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {modern_relatives.map((relative, idx) => (
               <motion.div
                 key={idx}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className="p-4 rounded-lg bg-card border"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.4 + (idx * 0.05) }}
+                className="bg-white p-3 rounded-xl border border-teal-100 shadow-sm hover:shadow-md transition-shadow group cursor-default"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-mono font-bold text-primary">{group?.root ?? 'N/A'}</span>
-                  <span className="text-muted-foreground text-sm">— {group?.meaning ?? 'N/A'}</span>
+                <div className="text-[9px] font-bold text-teal-600 mb-0.5 uppercase tracking-tighter">
+                  {relative.lang}
                 </div>
-                
-                {Array.isArray(group?.words) && group.words.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {group.words.map((word, wIdx) => (
-                      <span 
-                        key={wIdx}
-                        className="px-2 py-1 rounded bg-muted text-sm"
-                      >
-                        {word ?? 'N/A'}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div className="text-lg font-bold text-slate-800 group-hover:text-teal-700 transition-colors">
+                  {relative.word}
+                </div>
+                <div className="text-[8px] text-slate-400 font-medium">
+                  {relative.connection}
+                </div>
               </motion.div>
             ))}
           </div>
-        </div>
+        </section>
       )}
+
+      {/* 4. FOOTER NOTE */}
+      <footer className="text-center pt-8">
+        <p className="text-[10px] text-slate-400 italic">
+          Scanned via Linguistic Lab — Powered by Gemini 2.5 Flash Lite
+        </p>
+      </footer>
     </div>
   );
 };
